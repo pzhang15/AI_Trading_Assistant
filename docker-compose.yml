@@ -1,0 +1,71 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: tg-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trade_guardian
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: tg-redis
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+    container_name: tg-api
+    command: uvicorn trade_guardian.api.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: .env
+    environment:
+      TG_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/trade_guardian
+      TG_REDIS_URL: redis://redis:6379/0
+      TG_CELERY_BROKER_URL: redis://redis:6379/0
+      TG_CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: .
+    container_name: tg-worker
+    command: celery -A trade_guardian.workers.celery_app.app worker -l info
+    env_file: .env
+    environment:
+      TG_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/trade_guardian
+      TG_REDIS_URL: redis://redis:6379/0
+      TG_CELERY_BROKER_URL: redis://redis:6379/0
+      TG_CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pg_data:
+
+

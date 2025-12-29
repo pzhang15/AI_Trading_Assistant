@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install project
+        run: |
+          uv pip install --system --no-cache -e .
+          uv pip install --system --no-cache $(python -c "import tomllib,sys;print(' '.join(tomllib.load(open('pyproject.toml','rb')).get('tool',{}).get('uv',{}).get('dev-dependencies',[])))")
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (black)
+        run: black --check .
+
+      - name: Type check (mypy)
+        run: mypy src
+
+      - name: Tests
+        run: pytest -q
+
+
